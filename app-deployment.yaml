@@ -27,22 +27,22 @@ spec:
           env:
             - name: MONGODB_URI
               valueFrom:
-                configKeyRef:
+                configMapKeyRef:
                   name: fitness-configmap
                   key: MONGODB_URI
             - name: PORT
               valueFrom:
-                configKeyRef:
+                configMapKeyRef:
                   name: fitness-configmap
                   key: PORT
             - name: HOST
               valueFrom:
-                configKeyRef:
+                configMapKeyRef:
                   name: fitness-configmap
                   key: HOST
             - name: NODE_ENV
               valueFrom:
-                configKeyRef:
+                configMapKeyRef:
                   name: fitness-configmap
                   key: NODE_ENV
             # Datadog APM (tracing) env variables

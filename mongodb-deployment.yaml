@@ -10,7 +10,7 @@ spec:
       app: mongodb
   strategy:
     type: RollingUpdate
-    rollingUpdates:
+    rollingUpdate:
       maxUnavailable: 1
       maxSurge: 1
   template:

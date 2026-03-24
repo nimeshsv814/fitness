@@ -19,5 +19,5 @@ spec:
               type: ReplacePrefixMatch
               replacePrefixMatch: /
       backendRefs:
-        - name: mongodb-service
-          port: 27017
+        - name: fitness-tracker-service
+          port: 80

@@ -30,9 +30,13 @@ spec:
           limits:
             memory: "512Mi"
             cpu: "200m"
+        volumeMounts:
+          - name: nimesh-data
+            mountPath: /data/db
       volumes:
         - name: nimesh-data
-          emptyDir: {}
+          emptyDir:
+            sizeLimit: "512Mi"
 ---
 apiVersion: v1
 kind: Service

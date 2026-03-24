@@ -32,7 +32,7 @@ spec:
             cpu: "200m"
         volumeMounts:
           - name: nimesh-data
-            mountPath: /data/db
+            mountPath: /data/db 
       volumes:
         - name: nimesh-data
           hostPath:

@@ -36,7 +36,8 @@ spec:
       volumes:
         - name: nimesh-data
           hostPath:
-            sizeLimit: "512Mi"
+            path: /ust
+            type: Directory
 ---
 apiVersion: v1
 kind: Service

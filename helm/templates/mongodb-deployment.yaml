@@ -1,5 +1,5 @@
 apiVersion: apps/v1
-kind: Deployment
+kind: StatefulSet
 metadata:
   name: mongodb
   namespace: nimesh-ns
@@ -8,11 +8,11 @@ spec:
   selector:
     matchLabels:
       app: mongodb
-  strategy:
-    type: RollingUpdate
-    rollingUpdate:
-      maxUnavailable: 1
-      maxSurge: 1
+  # strategy:
+  #   type: RollingUpdate
+  #   rollingUpdate:
+  #     maxUnavailable: 1
+  #     maxSurge: 1
   template:
     metadata:
       labels:
@@ -55,5 +55,6 @@ spec:
   - port: 27017
     targetPort: 27017
   type: ClusterIP
+  clusterIP: none
  
  

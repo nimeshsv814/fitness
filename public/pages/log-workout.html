@@ -117,6 +117,38 @@
                 </button>
               </form>
             </div>
+
+            <div class="form-card">
+              <div class="form-header">
+                <h3>Upload Document to S3</h3>
+                <p>Upload a workout document or receipt and store it securely in AWS S3 with KMS encryption.</p>
+              </div>
+
+              <form class="registration-form" id="upload-form" enctype="multipart/form-data">
+                <div class="form-group">
+                  <label for="upload-file">Choose File</label>
+                  <input type="file" id="upload-file" name="file" required />
+                  <div class="form-error" id="upload-file-error"></div>
+                </div>
+
+                <button type="submit" class="btn btn-secondary btn-block btn-large">
+                  <i class="fas fa-cloud-upload-alt"></i>
+                  Upload to S3
+                </button>
+              </form>
+
+              <div class="dashboard-card" style="margin-top: 1.5rem;">
+                <div class="dashboard-card-header">
+                  <h3 class="dashboard-card-title">
+                    <i class="fas fa-folder-open"></i>
+                    My Uploaded Files
+                  </h3>
+                </div>
+                <div class="dashboard-card-body" id="uploaded-files-list">
+                  <p>No uploads yet.</p>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -186,8 +218,9 @@
         `;
       }
       
-      // Load workout stats
+      // Load workout stats and uploaded files
       loadWorkoutStats();
+      loadUserFiles();
       
       // Handle form submission
       const form = document.getElementById('workout-form');
@@ -255,6 +288,87 @@
             `;
           }
         });
+      }
+
+      const uploadForm = document.getElementById('upload-form');
+      if (uploadForm) {
+        uploadForm.addEventListener('submit', async function(e) {
+          e.preventDefault();
+
+          const fileInput = document.getElementById('upload-file');
+          const file = fileInput?.files?.[0];
+          const uploadError = document.getElementById('upload-file-error');
+          if (uploadError) uploadError.textContent = '';
+
+          if (!file) {
+            if (uploadError) uploadError.textContent = 'Please choose a file to upload.';
+            return;
+          }
+
+          const formData = new FormData();
+          formData.append('file', file);
+          formData.append('email', user.email);
+
+          const uploadButton = uploadForm.querySelector('button[type="submit"]');
+          uploadButton.disabled = true;
+          uploadButton.textContent = 'Uploading...';
+
+          try {
+            const response = await fetch('/api/auth/upload', {
+              method: 'POST',
+              body: formData
+            });
+
+            const result = await response.json();
+            if (response.ok && result.success) {
+              alert('File uploaded successfully to S3.');
+              uploadForm.reset();
+              loadUserFiles();
+            } else {
+              alert('Upload failed: ' + (result.msg || result.error || 'Unknown error'));
+            }
+          } catch (err) {
+            console.error('Upload error:', err);
+            alert('Upload error: ' + err.message);
+          } finally {
+            uploadButton.disabled = false;
+            uploadButton.innerHTML = '<i class="fas fa-cloud-upload-alt"></i> Upload to S3';
+          }
+        });
+      }
+
+      async function loadUserFiles() {
+        const filesList = document.getElementById('uploaded-files-list');
+        if (!filesList || !user) return;
+
+        filesList.innerHTML = '<p>Loading uploaded files...</p>';
+        try {
+          const response = await fetch(`/api/auth/files/${encodeURIComponent(user.email)}`);
+          const result = await response.json();
+
+          if (!response.ok || !result.success) {
+            filesList.innerHTML = `<p>Error loading files: ${result.msg || result.error || 'Failed'}</p>`;
+            return;
+          }
+
+          if (!result.files || result.files.length === 0) {
+            filesList.innerHTML = '<p>No uploads yet.</p>';
+            return;
+          }
+
+          filesList.innerHTML = result.files.map(file => `
+            <div class="file-card">
+              <div class="file-name">${file.name}</div>
+              <div class="file-actions">
+                <a class="btn btn-secondary btn-small" href="${file.downloadUrl}">Download</a>
+                <span class="file-size">${(file.size / 1024).toFixed(1)} KB</span>
+              </div>
+            </div>
+          `).join('');
+        } catch (err) {
+          console.error('Error loading uploaded files:', err);
+          filesList.innerHTML = '<p>Unable to load uploaded files.</p>';
+        }
       }
     });
     

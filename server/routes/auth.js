@@ -1,19 +1,31 @@
 const express = require('express');
 const mongoose = require('mongoose');
 const path = require('path');
-const multer = require('multer');
-const {
-  S3Client,
-  PutObjectCommand,
-  GetObjectCommand,
-  ListObjectsV2Command
-} = require('@aws-sdk/client-s3');
 const { logger } = require('../datadog');
+
+let multer;
+let S3Client;
+let PutObjectCommand;
+let GetObjectCommand;
+let ListObjectsV2Command;
+let upload;
+let s3Client;
+let s3DependenciesAvailable = true;
+
+try {
+  multer = require('multer');
+  ({ S3Client, PutObjectCommand, GetObjectCommand, ListObjectsV2Command } = require('@aws-sdk/client-s3'));
+  upload = multer({ storage: multer.memoryStorage() });
+  s3Client = new S3Client({ region: process.env.AWS_REGION || 'us-east-1' });
+} catch (err) {
+  s3DependenciesAvailable = false;
+  logger.error('S3 / multer require failed, upload routes disabled', {
+    error: err && err.message ? err.message : String(err)
+  });
+}
 
 const router = express.Router();
 
-const upload = multer({ storage: multer.memoryStorage() });
-const s3Client = new S3Client({ region: process.env.AWS_REGION || 'us-east-1' });
 const bucketName = process.env.S3_BUCKET_NAME;
 const kmsKeyId = process.env.S3_KMS_KEY_ID;
 
@@ -501,7 +513,12 @@ router.delete('/plans/:id', async (req, res) => {
 });
 
 // Upload file to S3 with AWS KMS encryption
-router.post('/upload', upload.single('file'), async (req, res) => {
+router.post('/upload', (req, res, next) => {
+  if (!s3DependenciesAvailable) {
+    return res.status(500).json({ msg: 'S3 upload dependencies are not installed on the server' });
+  }
+  next();
+}, upload.single('file'), async (req, res) => {
   const { email } = req.body;
   if (!bucketName || !kmsKeyId) {
     logger.error('S3 upload failed - missing S3 configuration');
@@ -539,7 +556,12 @@ router.post('/upload', upload.single('file'), async (req, res) => {
 });
 
 // List files uploaded by a user
-router.get('/files/:email', async (req, res) => {
+router.get('/files/:email', (req, res, next) => {
+  if (!s3DependenciesAvailable) {
+    return res.status(500).json({ msg: 'S3 dependencies are not installed on the server' });
+  }
+  next();
+}, async (req, res) => {
   const email = req.params.email;
   if (!bucketName) {
     return res.status(500).json({ msg: 'S3 is not configured on the server' });
@@ -569,7 +591,12 @@ router.get('/files/:email', async (req, res) => {
 });
 
 // Download file from S3
-router.get('/download', async (req, res) => {
+router.get('/download', (req, res, next) => {
+  if (!s3DependenciesAvailable) {
+    return res.status(500).json({ msg: 'S3 dependencies are not installed on the server' });
+  }
+  next();
+}, async (req, res) => {
   const key = req.query.key;
   if (!bucketName || !key) {
     return res.status(400).json({ msg: 'File key is required' });

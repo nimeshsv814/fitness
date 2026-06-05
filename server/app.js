@@ -1,106 +1,151 @@
-// Initialize Datadog tracing FIRST - must be before other imports
+// ==============================
+// 1. Initialize Datadog FIRST
+// ==============================
 const { tracer, logger } = require('./datadog');
 
-// Import required modules
-const express = require('express');          // Express framework for building the server
-const path = require('path');                // Node.js module to handle file paths
-const mongoose = require('mongoose');        // MongoDB ODM
-const authRoutes = require('./routes/auth'); // Import authentication routes from a separate file
+// ==============================
+// 2. Core imports
+// ==============================
+const express = require('express');
+const path = require('path');
+const mongoose = require('mongoose');
+const dotenv = require('dotenv');
 
-// Create an Express app
+// Load environment variables
+dotenv.config();
+
+// ==============================
+// 3. AWS Secrets Manager setup
+// ==============================
+const {
+  SecretsManagerClient,
+  GetSecretValueCommand
+} = require("@aws-sdk/client-secrets-manager");
+
+const client = new SecretsManagerClient({
+  region: process.env.AWS_REGION || "us-east-1"
+});
+
+// ==============================
+// 4. Express app init
+// ==============================
 const app = express();
 
-// Environment configuration
-require('dotenv').config();
-
-// MongoDB connection with environment variable support
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/fitness-tracker';
-
-// Connect to MongoDB with error handling and retry logic
-const connectDB = async () => {
-  try {
-    const conn = await mongoose.connect(MONGODB_URI);
-    logger.info('Database connection established', {
-      host: conn.connection.host,
-      database: conn.connection.name,
-      action: 'mongodb_connected'
-    });
-    console.log(`✅ Connected to MongoDB: ${conn.connection.host}`);
-  } catch (err) {
-    logger.error('Database connection failed', {
-      error: err.message,
-      mongoUri: MONGODB_URI.replace(/\/\/.*@/, '//***:***@'), // Hide credentials
-      action: 'mongodb_connection_failed'
-    });
-    console.error('❌ MongoDB connection error:', err.message);
-    // Retry connection after 5 seconds
-    setTimeout(connectDB, 5000);
-  }
-};
-
-// Initialize database connection
-connectDB();
-
-// Middleware: Parse incoming JSON data in requests (used in POST requests like login/register)
+// ==============================
+// 5. Middleware
+// ==============================
 app.use(express.json());
+
+// Serve static files
+app.use(express.static(path.join(__dirname, '..', 'public')));
 
 // Request logging middleware
 app.use((req, res, next) => {
   const start = Date.now();
-  
+
   res.on('finish', () => {
     const duration = Date.now() - start;
+
     logger.info('HTTP Request', {
       method: req.method,
       url: req.url,
       statusCode: res.statusCode,
-      duration: `${duration}ms`,
-      userAgent: req.get('User-Agent')
+      duration: `${duration}ms`
     });
   });
-  
+
   next();
 });
 
-// Middleware: Serve all static files (HTML, CSS, JS, images, etc.) from the "public" folder
-app.use(express.static(path.join(__dirname, '..', 'public')));
+// ==============================
+// 6. Get Mongo Secret from AWS
+// ==============================
+async function getMongoSecret() {
+  const response = await client.send(
+    new GetSecretValueCommand({
+      SecretId: process.env.SECRET_ID || "fitness-secrets"
+    })
+  );
 
-// Log ALL /api/auth requests for debugging
+  return JSON.parse(response.SecretString);
+}
+
+// ==============================
+// 7. MongoDB connection logic
+// ==============================
+let isConnected = false;
+
+async function connectDB() {
+  try {
+    if (isConnected) return;
+
+    const secret = await getMongoSecret();
+
+    const mongoURI =
+      `mongodb://${secret.host}:${secret.port}/${secret.database}`;
+
+    await mongoose.connect(mongoURI);
+
+    isConnected = true;
+
+    logger.info('Database connected successfully', {
+      host: secret.host,
+      database: secret.database
+    });
+
+    console.log("✅ MongoDB Connected Successfully");
+
+  } catch (error) {
+    logger.error('MongoDB connection failed', {
+      error: error.message
+    });
+
+    console.error("❌ MongoDB Connection Failed:", error.message);
+
+    // retry after 5 seconds
+    setTimeout(connectDB, 5000);
+  }
+}
+
+// Initialize DB connection
+connectDB();
+
+// ==============================
+// 8. Routes
+// ==============================
+
+// Root route
+app.get('/', (req, res) => {
+  res.sendFile(
+    path.join(__dirname, '..', 'public', 'pages', 'index.html')
+  );
+});
+
+// Auth routes
+const authRoutes = require('./routes/auth');
+app.use('/api/auth', authRoutes);
+
+// Debug middleware for auth
 app.use('/api/auth', (req, res, next) => {
-  logger.info('API AUTH REQUEST RECEIVED', {
+  logger.info('Auth API hit', {
     method: req.method,
-    path: req.path,
-    url: req.url,
-    body: req.body,
-    query: req.query,
-    headers: req.headers,
-    action: 'api_auth_request'
+    path: req.path
   });
   next();
 });
 
-// Mount authentication routes at the path "/api/auth"
-// e.g., /api/auth/register, /api/auth/login
-app.use('/api/auth', authRoutes);
-
-// Route: Redirect root URL ("/") to the main homepage (index.html in public/pages)
-app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, '..', 'public', 'pages', 'index.html'));
-});
-
-// Set server port and start listening with environment variable support
+// ==============================
+// 9. Server start
+// ==============================
 const PORT = process.env.PORT || 5000;
 const HOST = process.env.HOST || '0.0.0.0';
 
 app.listen(PORT, HOST, () => {
-  logger.info('Server started successfully', {
+  logger.info('Server started', {
     host: HOST,
     port: PORT,
-    environment: process.env.NODE_ENV || 'development',
-    database: MONGODB_URI.replace(/\/\/.*@/, '//***:***@'),
-    action: 'server_started'
+    env: process.env.NODE_ENV || 'development'
   });
+
   console.log(`🚀 Server running on http://${HOST}:${PORT}`);
-  console.log(`📊 Environment: ${process.env.NODE_ENV || 'development'}`);
-  console.log(`🗄️  Database: ${MONGODB_URI}`);
 });
